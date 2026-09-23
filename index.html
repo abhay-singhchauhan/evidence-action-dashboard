@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Water monitoring dashboard — Free Residual Chlorine</title>
+  <style>
+    :root {
+      --bg: #f3f4f6;
+      --surface: #ffffff;
+      --text: #1a1a1a;
+      --muted: #3d4a57;
+      --border: #6b7785;
+      --header: #1b3a4b;
+      --header-text: #ffffff;
+      --accent: #1b3a4b;
+      --focus: #0b57d0;
+      --error-bg: #fdecea;
+      --error-text: #8a1c12;
+      --ok-bg: #e8f2ec;
+      --chart-bar: #1b3a4b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.45;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    a { color: var(--focus); }
+
+    .skip-link {
+      position: absolute;
+      left: 8px;
+      top: -40px;
+      background: var(--header);
+      color: var(--header-text);
+      padding: 8px 12px;
+      z-index: 10;
+    }
+
+    .skip-link:focus { top: 8px; }
+
+    header {
+      background: var(--header);
+      color: var(--header-text);
+      padding: 16px 20px;
+      border-bottom: 4px solid #c45c26;
+    }
+
+    header h1 {
+      margin: 0 0 4px;
+      font-size: 1.35rem;
+      font-weight: 650;
+    }
+
+    header p {
+      margin: 0;
+      font-size: 0.95rem;
+    }
+
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 20px 16px 40px;
+    }
+
+    .toolbar,
+    .status,
+    .kpis,
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 12px 20px;
+    }
+
+    label {
+      display: block;
+      font-weight: 650;
+      margin-bottom: 4px;
+    }
+
+    select {
+      min-width: 220px;
+      min-height: 40px;
+      padding: 6px 8px;
+      font-size: 1rem;
+      color: var(--text);
+      background: #fff;
+      border: 2px solid var(--accent);
+    }
+
+    select:focus,
+    .skip-link:focus {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .status[hidden] { display: none; }
+
+    .status[data-state="loading"] { background: var(--ok-bg); }
+    .status[data-state="error"] {
+      background: var(--error-bg);
+      color: var(--error-text);
+      border-color: var(--error-text);
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      padding: 12px;
+    }
+
+    .kpi {
+      border: 1px solid var(--border);
+      padding: 12px 14px;
+      background: #fff;
+    }
+
+    .kpi .label {
+      margin: 0;
+      font-size: 0.92rem;
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    .kpi .value {
+      margin: 6px 0 0;
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .kpi .hint {
+      margin: 6px 0 0;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 1.1rem;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 320px;
+    }
+
+    footer {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 16px 24px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    @media (max-width: 700px) {
+      .kpis { grid-template-columns: 1fr; }
+      select { width: 100%; }
+      header h1 { font-size: 1.15rem; }
+      .kpi .value { font-size: 1.55rem; }
+      .chart-wrap { height: 260px; }
+    }
+  </style>
+</head>
+<body>
+
+
+  <main id="content">
+    <div id="status" class="status" role="status" aria-live="polite" data-state="loading">
+      Loading site data…
+    </div>
+
+    <form class="toolbar" aria-label="Dashboard filters">
+      <div>
+        <label for="district-filter">District</label>
+        <select id="district-filter" disabled>
+          <option value="">All districts</option>
+        </select>
+      </div>
+    </form>
+
+    <section class="kpis" id="kpi-row" aria-label="Key figures" hidden></section>
+
+    <section class="panel" id="chart-panel" hidden>
+      <h2 id="chart-title">FRC coverage % by district</h2>
+      <div class="chart-wrap">
+        <canvas id="chart" role="img" aria-labelledby="chart-title"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Threshold used: FRC ≥ 0.2 mg/L. Untested sites have no recorded FRC value.
+    Site records are read from the local file data/sites.js.
+  </footer>
+
+  <script src="vendor/chart.umd.min.js"></script>
+  <script src="data/sites.js"></script>
+  <script>
+    (function () {
+      var FRC_THRESHOLD = 0.2;
+
+      var dashboardConfig = {
+        filter: {
+          field: "district",
+          allValue: "",
+          allLabel: "All districts"
+        },
+        kpis: [
+          {
+            id: "total-sites",
+            label: "Total sites",
+            hint: "Sites in the current selection",
+            format: "integer",
+            compute: function (sites) {
+              return sites.length;
+            }
+          },
+          {
+            id: "frc-coverage",
+            label: "% sites with FRC ≥ 0.2 mg/L",
+            hint: "Meeting residual chlorine threshold",
+            format: "percent",
+            compute: function (sites) {
+              if (!sites.length) return 0;
+              var meeting = sites.filter(function (site) {
+                return typeof site.frc_mgl === "number" && site.frc_mgl >= FRC_THRESHOLD;
+              }).length;
+              return (meeting / sites.length) * 100;
+            }
+          },
+          {
+            id: "untested",
+            label: "Untested sites",
+            hint: "No FRC reading recorded",
+            format: "integer",
+            compute: function (sites) {
+              return sites.filter(function (site) {
+                return site.frc_mgl === null || site.frc_mgl === undefined || site.frc_mgl === "";
+              }).length;
+            }
+          }
+        ],
+        chart: {
+          id: "frc-coverage-by-district",
+          title: "FRC coverage % by district",
+          type: "bar",
+          yLabel: "Coverage (%)",
+          groupField: "district",
+          compute: function (sites, groupField) {
+            var groups = {};
+            sites.forEach(function (site) {
+              var key = site[groupField] || "Unknown";
+              if (!groups[key]) groups[key] = [];
+              groups[key].push(site);
+            });
+            var labels = Object.keys(groups).sort();
+            var values = labels.map(function (label) {
+              var group = groups[label];
+              var meeting = group.filter(function (site) {
+                return typeof site.frc_mgl === "number" && site.frc_mgl >= FRC_THRESHOLD;
+              }).length;
+              return group.length ? (meeting / group.length) * 100 : 0;
+            });
+            return { labels: labels, values: values };
+          }
+        }
+      };
+
+      var statusEl = document.getElementById("status");
+      var filterEl = document.getElementById("district-filter");
+      var kpiRow = document.getElementById("kpi-row");
+      var chartPanel = document.getElementById("chart-panel");
+      var chartTitle = document.getElementById("chart-title");
+      var allSites = [];
+      var chartInstance = null;
+
+      function setStatus(state, message) {
+        statusEl.hidden = !message;
+        statusEl.dataset.state = state;
+        statusEl.textContent = message || "";
+      }
+
+      function formatValue(value, format) {
+        if (format === "percent") return value.toFixed(1) + "%";
+        return String(Math.round(value));
+      }
+
+      function selectedSites() {
+        var value = filterEl.value;
+        var field = dashboardConfig.filter.field;
+        if (value === dashboardConfig.filter.allValue) return allSites;
+        return allSites.filter(function (site) {
+          return site[field] === value;
+        });
+      }
+
+      function renderKpis(sites) {
+        kpiRow.innerHTML = "";
+        dashboardConfig.kpis.forEach(function (kpi) {
+          var article = document.createElement("article");
+          article.className = "kpi";
+          article.id = kpi.id;
+
+          var label = document.createElement("p");
+          label.className = "label";
+          label.id = kpi.id + "-label";
+          label.textContent = kpi.label;
+
+          var value = document.createElement("p");
+          value.className = "value";
+          value.setAttribute("aria-labelledby", kpi.id + "-label");
+          value.textContent = formatValue(kpi.compute(sites), kpi.format);
+
+          article.appendChild(label);
+          article.appendChild(value);
+
+          if (kpi.hint) {
+            var hint = document.createElement("p");
+            hint.className = "hint";
+            hint.textContent = kpi.hint;
+            article.appendChild(hint);
+          }
+
+          kpiRow.appendChild(article);
+        });
+        kpiRow.hidden = false;
+      }
+
+      function renderChart(sites) {
+        var chartDef = dashboardConfig.chart;
+        var data = chartDef.compute(sites, chartDef.groupField);
+        chartTitle.textContent = chartDef.title;
+        chartPanel.hidden = false;
+
+        if (chartInstance) chartInstance.destroy();
+
+        if (typeof Chart === "undefined") {
+          setStatus("error", "Chart library failed to load from the local vendor file.");
+          return;
+        }
+
+        chartInstance = new Chart(document.getElementById("chart"), {
+          type: chartDef.type,
+          data: {
+            labels: data.labels,
+            datasets: [{
+              label: chartDef.title,
+              data: data.values,
+              backgroundColor: "#1b3a4b",
+              borderColor: "#122833",
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function (ctx) {
+                    return ctx.parsed.y.toFixed(1) + "%";
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                title: { display: true, text: "District", color: "#1a1a1a" },
+                ticks: { color: "#1a1a1a" },
+                grid: { color: "#d5dbe0" }
+              },
+              y: {
+                beginAtZero: true,
+                suggestedMax: 100,
+                title: { display: true, text: chartDef.yLabel, color: "#1a1a1a" },
+                ticks: {
+                  color: "#1a1a1a",
+                  callback: function (value) { return value + "%"; }
+                },
+                grid: { color: "#d5dbe0" }
+              }
+            }
+          }
+        });
+      }
+
+      function renderDashboard() {
+        var sites = selectedSites();
+        renderKpis(sites);
+        renderChart(sites);
+      }
+
+      function populateFilter(sites) {
+        var field = dashboardConfig.filter.field;
+        var districts = Array.from(new Set(sites.map(function (site) {
+          return site[field];
+        }))).filter(Boolean).sort();
+
+        filterEl.innerHTML = "";
+        var allOption = document.createElement("option");
+        allOption.value = dashboardConfig.filter.allValue;
+        allOption.textContent = dashboardConfig.filter.allLabel;
+        filterEl.appendChild(allOption);
+
+        districts.forEach(function (name) {
+          var option = document.createElement("option");  
+          option.value = name;
+          option.textContent = name;
+          filterEl.appendChild(option);
+        });
+
+        filterEl.disabled = false;
+      }
+
+      filterEl.addEventListener("change", renderDashboard);
+
+      try {
+        var payload = typeof window.SITES_DATA !== "undefined" ? window.SITES_DATA : null;
+        allSites = payload && payload.sites ? payload.sites : [];
+        if (!allSites.length) {
+          throw new Error("Keep data/sites.js next to this page.");
+        }
+        populateFilter(allSites);
+        renderDashboard();
+        setStatus("loading", "");
+      } catch (error) {
+        setStatus(
+          "error",
+          "Unable to load the local site file. " +
+            (error && error.message ? error.message : "Unknown error.")
+        );
+        kpiRow.hidden = true;
+        chartPanel.hidden = true;
+        filterEl.disabled = true;
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+window.SITES_DATA = {
+  "sites": [
+    {"id": "AP-VZM-014", "district": "Vizianagaram", "type": "IC", "frc_mgl": 0.24},
+    {"id": "AP-VZM-021", "district": "Vizianagaram", "type": "LMT1", "frc_mgl": 0.08},
+    {"id": "AP-VZM-033", "district": "Vizianagaram", "type": "LMT1", "frc_mgl": null},
+    {"id": "AP-VZM-041", "district": "Vizianagaram", "type": "IC", "frc_mgl": 0.22},
+    {"id": "AP-SKL-003", "district": "Srikakulam", "type": "IC", "frc_mgl": 0.31},
+    {"id": "AP-SKL-009", "district": "Srikakulam", "type": "LMT1", "frc_mgl": 0.19},
+    {"id": "AP-SKL-017", "district": "Srikakulam", "type": "IC", "frc_mgl": 0.41},
+    {"id": "AP-SKL-022", "district": "Srikakulam", "type": "LMT1", "frc_mgl": null},
+    {"id": "AP-PVP-002", "district": "Parvathipuram", "type": "IC", "frc_mgl": 0.27},
+    {"id": "AP-PVP-008", "district": "Parvathipuram", "type": "LMT1", "frc_mgl": 0.11},
+    {"id": "AP-PVP-011", "district": "Parvathipuram", "type": "IC", "frc_mgl": null}
+  ]
+};

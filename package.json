@@ -1,0 +1,12 @@
+{
+  "name": "water-monitoring-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local water-monitoring dashboard",
+  "scripts": {
+    "start": "npx --yes serve -l 4173"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.6"
+  }
+}
